@@ -1,0 +1,123 @@
+#!/bin/bash
+VER_BINUTILS=2.38
+VER_GCC=11.2.0
+VER_NEWLIB=4.2.0.20211231
+
+TARGET=arm-none-eabi
+PREFIX=$HOME/build
+PACKAGE=$HOME/package
+
+_download () {
+	filename=$1
+	url=$2
+	if [[ ! -f "$filename" ]]; then
+		curl -o "$filename" -L "$url"
+	fi
+}
+
+_download binutils-${VER_BINUTILS}.tar.xz \
+	ftp.gnu.org/gnu/binutils/binutils-${VER_BINUTILS}.tar.xz
+
+_download gcc-${VER_GCC}.tar.xz \
+	ftp.gnu.org/gnu/gcc/gcc-$(basename ${VER_GCC} .0).0/gcc-${VER_GCC}.tar.xz
+
+_download newlib-${VER_NEWLIB}.tar.gz \
+	sourceware.org/pub/newlib/newlib-${VER_NEWLIB}.tar.gz
+
+tar -xf binutils-${VER_BINUTILS}.tar.xz
+tar -xf gcc-${VER_GCC}.tar.xz 
+tar -xf newlib-${VER_NEWLIB}.tar.gz
+
+mkdir ${TARGET}-binutils-${VER_BINUTILS}
+mkdir ${TARGET}-gcc-${VER_GCC}
+mkdir ${TARGET}-newlib-${VER_NEWLIB}
+
+BACK=$PWD
+
+
+
+
+# cross binutils
+cd $BACK
+cd ${TARGET}-binutils-${VER_BINUTILS}
+../binutils-${VER_BINUTILS}/configure \
+	--target=$TARGET \
+	--prefix=$PREFIX \
+	--with-sysroot=$PREFIX/$TARGET \
+	--disable-nls
+
+make -j$(nproc)
+make install
+make DESTDIR=${PACKAGE} install
+
+
+
+
+# check path
+if ! which -- ${TARGET}-as ; then
+	PATH=$PREFIX/bin:$PATH
+	echo PATH=$PATH
+fi
+
+
+
+
+# gcc source
+cd $BACK
+cd gcc-${VER_GCC}
+./contrib/download_prerequisites
+
+
+
+
+# cross gcc, stage1
+cd $BACK
+cd ${TARGET}-gcc-${VER_GCC}
+../gcc-${VER_GCC}/configure \
+	--prefix=$PREFIX \
+	--target=$TARGET \
+	--enable-languages=c,ada \
+	--with-newlib \
+	--without-headers \
+	--disable-nls \
+	--disable-shared
+
+make -j$(nproc) all-gcc
+make install-gcc
+make -j$(nproc) all-target-libgcc
+make install-target-libgcc
+
+
+
+
+# newlib
+cd $BACK
+cd ${TARGET}-newlib-${VER_NEWLIB}
+../newlib-${VER_NEWLIB}/configure \
+	--prefix=$PREFIX \
+	--target=$TARGET \
+	--disable-shared
+make -j$(nproc)
+make install
+make DESTDIR=${PACKAGE} install
+
+
+# cross gcc, last stage
+cd $BACK
+cd ${TARGET}-gcc-${VER_GCC}
+../gcc-${VER_GCC}/configure \
+	--prefix=$PREFIX \
+	--target=$TARGET \
+	--enable-languages=c,ada \
+	--disable-nls \
+	--disable-shared \
+	--disable-libada
+
+make -j$(nproc) 
+make -j$(nproc) -C gcc cross-gnattools ada.all.cross
+make install
+make DESTDIR=${PACKAGE} install
+
+cd $BACK
+tar -C $PACKAGE/$PREFIX -cvzf ${TARGET}-gcc-${VER_GCC}.tar.gz ./
+
