@@ -30,11 +30,26 @@ tar -xf newlib-${VER_NEWLIB}.tar.gz
 
 mkdir ${TARGET}-binutils-${VER_BINUTILS}
 mkdir ${TARGET}-gcc-${VER_GCC}
+mkdir host-gcc-${VER_GCC}
 mkdir ${TARGET}-newlib-${VER_NEWLIB}
 
 BACK=$PWD
 
 
+
+# building cross Gnat requires a host Gnat to
+# be built from the same source
+cd $BACK
+cd host-gcc-${VER_GCC}
+../gcc-${VER_GCC}/configure \
+	--prefix=$PREFIX \
+	--enable-languages=c,ada \
+	--disable-multilib
+
+make -j$(nproc)
+make install
+
+PATH=$PREFIX/bin:$PATH
 
 
 # cross binutils
@@ -51,14 +66,10 @@ make install
 make DESTDIR=${PACKAGE} install
 
 
-
-
 # check path
 if ! which -- ${TARGET}-as ; then
-	PATH=$PREFIX/bin:$PATH
-	echo PATH=$PATH
+	echo Assembler not installed properly
 fi
-
 
 
 
